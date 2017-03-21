@@ -98,6 +98,10 @@ class LineNumberVisitor(c_ast.NodeVisitor):
 	def generic_visit(self, node):
 		"""Overrides the standard generic_visit to find the node on the specified line number"""
 
+		#We will never need to find the FileAST node
+		if (isinstance(node, c_ast.FileAST)):
+			return;
+
 		#Don't do anything if we've already found a node on that line number
 		if (self.ast_node is not None):
 			return;
