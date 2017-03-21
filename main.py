@@ -103,6 +103,7 @@ class LineNumberVisitor(c_ast.NodeVisitor):
 			return;
 
 		#Figure out if we have a node from that line number
+		node.show(showcoord=True);
 		lineNumber = lineNumberFromCoord(node.coord)
 		if (lineNumber is not None and lineNumber == self.lineno):
 			self.ast_node = node;
