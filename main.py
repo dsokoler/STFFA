@@ -12,16 +12,16 @@ rootNode 	= None;	#The root of our tree
 currentNode = rootNode;
 
 class CFGNode():
-	'''
+	"""
 	Currently represents a function call
 	Root node: function as "", parents as empty, children as not empty, and info as None
 	'Root' is technically the vulnerable point we start at
 	The exit nodes will have children as empty and parents as not
-	'''
+	"""
 	def __init__(self, funcname, ast_info):
 		self.function	= funcname;	#The name of the function this node represents
-		self.parents 	= [];		#List of (methodName, methodNode) that call this function (who calls this function)
-		self.children 	= [];		#List of (methodName, methodNode) called by this function (who this function calls)
+		self.parents 	= [];		#List of CFGNode that call this function (who calls this function)
+		self.children 	= [];		#List of CFGNode called by this function (who this function calls)
 		self.info 		= ast_info;	#Info about said node, most likely will be the actual AST node
 
 	def __repr__(self):
@@ -31,35 +31,38 @@ class CFGNode():
 		return self.function;
 
 	def add_child(self, child):
-		'''Add a child node to this node'''
+		"""Add a child node to this node"""
 		self.children.append(child);
 
 	def add_parent(self, parent):
-		'''Add a parent node to this node'''
-		self.parents.append(child);
+		"""Add a parent node to this node"""
+		self.parents.append(parent);
 
 	def print_tree(self, spaces):
-		'''Textual version of the CFG from this node downward'''
+		"""Textual version of the CFG from this node downward"""
 		print(spaces*" " + self.__str__());	#2 spaces per level
 		for child in self.children:
 			child.print_tree(spaces + 2);
 
 
 class FuncCallVisitor(c_ast.NodeVisitor):
+	"""Used to interact with all FuncCall nodes"""
 	def __init__(self, funcname):
-		'''Store information we'll need here'''
-		self.funcname = funcname
+		"""Store information we'll need here"""
+		self.funcname 		= funcname
 		self.current_parent = None;
 		self.currentCFGNode = rootNode;
 
 	def visit_FuncCall(self, node):
-		'''Triggers every time we find a FuncCall node in PyCParser's AST'''
+		"""Triggers every time we find a FuncCall node in PyCParser's AST"""
 		#If this node is of the function we are looking for
 		if node.name.name == self.funcname:
 			#Check if this method is already in the parent node's children, if so we don't need to add it again, if not add it
-			if ( any(x[0] == node.name.name for x in self.currentCFGNode.parents) ):
+			#NOTE: We probably want to know all calls inside a method as well as the line numbers those calls are on
+			#	 : Line numbers for the calls are located in the FuncCall node's coord field
+			if ( any(x.function == node.name.name for x in self.currentCFGNode.parents) ):
 				return;
-			self.currentCFGNode.parents.append( (node.name.name, node) );
+			self.currentCFGNode.add_parent( CFGNode(node.name.name, node) );
 
 			#Find method this node is in (e.g. what method called this one) (our "new" method)
 			methodName, isDefinedIn = getNameAndASTNode(node);
@@ -74,7 +77,7 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 			print('%s called at %s' % (self.funcname, node.name.coord))
 
 	def generic_visit(self, node):
-		'''Overrides the standard generic_visit method to include parent links, accessed while traversing'''
+		"""Overrides the standard generic_visit method to include parent links, accessed while traversing"""
 		node.parent = self.current_parent;	#Assigns a parent field to the pycparser node
 
 		#Taken from PyCParser github FAQ
@@ -85,28 +88,28 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 		self.current_parent = oldparent
 
 
-
 class LineNumberVisitor(c_ast.NodeVisitor):
-	'''This class' sole purpose is to find the c_ast node on a certain line number'''
+	"""This class' sole purpose is to find the first c_ast node on a certain line number"""
 
 	def __init__(self, linenumber):
-		self.lineno = linenumber;	#The line number we are looking for
-		self.ast_node = None;			#The node found on the specified linenumber
+		self.lineno 	= linenumber;	#The line number we are looking for
+		self.ast_node 	= None;			#The node found on the specified linenumber
 
 	def generic_visit(self, node):
-		'''Overrides the standard generic_visit to find the node on the specified line number'''
+		"""Overrides the standard generic_visit to find the node on the specified line number"""
 
 		#Don't do anything if we've already found a node on that line number
 		if (self.ast_node is not None):
 			return;
 
-		#Coord is 'file.c:lineNumber'
-		if (int(coord.split(':')[1]) == self.lineno):
+		#Figure out if we have a node from that line number
+		lineNumber = lineNumberFromCoord(node.coord)
+		if (lineNumber is not None and lineNumber == self.lineno):
 			self.ast_node = node;
 
 
 def getNameAndASTNode(node):
-	'''Returns the name of the method the specified node is in, along with its AST node'''
+	"""Returns the name of the method the specified node is in, along with its AST node"""
 
 	#Upwards trace of c_ast nodes until we find the FuncDef that 'node' is inside of
 	isDefinedIn = node.parent;
@@ -125,6 +128,20 @@ def getNameAndASTNode(node):
 	return (methodName, isDefinedIn);
 
 
+def lineNumberFromCoord(coord):
+	"""Converts a PyCParser coord to the specified line number"""
+	lineNo = None;
+
+	#Ensure we don't get any unwanted errors
+	try:
+		#Coord is 'file.c:lineNumber'
+		lineNo = int(coord.split(':')[1]);
+	except ValueError:
+		print("ERROR: unable to convert coord to line number");
+
+	return lineNo
+
+
 #
 #For each methodName, methodNode in methodQueue:
 #	Find each instance of the function call, put those in a queue
@@ -132,7 +149,7 @@ def getNameAndASTNode(node):
 #Repeat these steps using the new function each time until we reach main on all instances
 #
 def parseForCFG(filename, lineNo):
-	'''Parse the file filename for a Control Flow Graph starting at lineNo'''
+	"""Parse the file filename for a Control Flow Graph starting at lineNo"""
 	rootNode = CFGNode("", None)
 
 	#Create the AST to parse
@@ -159,8 +176,6 @@ def parseForCFG(filename, lineNo):
 		v.visit(ast)
 
 	return rootNode;
-
-
 
 
 if __name__ == "__main__":
