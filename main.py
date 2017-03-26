@@ -7,9 +7,15 @@ sys.path.extend(['.', '..'])
 
 from pycparser import c_parser, c_ast, parse_file
 
-methodQueue = [];	#Queue of tuples (methodName, methodNode) of methods we're tracing.  methodNode is the CFGNode of the method
-rootNode 	= None;	#The root of our tree
-currentNode = rootNode;
+methodQueue = [];		#Queue of tuples (methodName, methodNode) of methods we're tracing.  methodNode is the CFGNode of the method
+rootNode 	= None;		#The root of our tree
+
+funcCalls 	= {};		# FunctionName: [List of FuncCall nodes for that function]
+						#Using a dictionary to keep track of function call nodes allows us to scale with size, rather than time
+						#The problem with using this is that we can no longer get a parent tree, we would
+						# need to find another way to deal with the upwards trace/parent links
+
+funcDefCFGNodes = {}	# FunctionName: CFGNode
 
 
 class CFGNode():
@@ -48,13 +54,10 @@ class CFGNode():
 
 class FuncCallVisitor(c_ast.NodeVisitor):
 	"""Used to interact with all FuncCall nodes"""
-	def __init__(self, funcname):
+	def __init__(self, funcname, startingNode):
 		"""Store information we'll need here"""
-		self.funcname 		= funcname
-		self.current_parent = None;
-
-		global rootNode;
-		self.currentCFGNode = rootNode;
+		self.funcname 		= funcname 			#The name of the function call nodes we are looking for
+		self.currentCFGNode = startingNode;		#
 		self.parentList = [];	#Keeps track of the list of nodes we've seen on this path in the AST (works b/c generic_visit is DFS)
 
 	def visit_FuncCall(self, node):
@@ -86,16 +89,24 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 					print("ERROR (FATAL): unable to locate function name holding call to " + self.funcname);
 					sys.exit();
 
+				newNode = None;
+				if (methodName in funcDefCFGNodes.keys()):
+					newNode = funcDefCFGNodes[methodName];
+
 				#Make a CFG node for this "new" node, and add it to the methodQueue only if it is not already in the methodQueue
 				if (not any(entry[0] == methodName for entry in methodQueue) ):
-					newNode = CFGNode(methodName, isDefinedIn);			#Make the new CFGNode
+					if (newNode is None):
+						newNode = CFGNode(methodName, isDefinedIn);			#Make the new CFGNode
+						funcDefCFGNodes[methodName] = newNode;
+
 					self.currentCFGNode.add_child(newNode);				#Add the new CFGNode as a child of the current CFGNode
-					newNode.add_parent(currentNode);					#Add the current CFGNode as a parent of the new CFGNode
+					newNode.add_parent(self.currentCFGNode);			#Add the current CFGNode as a parent of the new CFGNode
 					methodQueue.append( (methodName, newNode) );		#Add the method we found it in to the methodQueue
+				else:
+					self.currentCFGNode.add_child(funcDefCFGNodes[methodName]);
+					funcDefCFGNodes[methodName].add_parent(self.currentCFGNode);
 
-					self.currentCFGNode = newNode;
-
-				print('%s called at %s inside %s declared at %s' % (self.funcname, node.name.coord, methodName, methodLocation))
+				print('%s called at %s inside %s declared at %s\n' % (self.funcname, node.name.coord, methodName, methodLocation))
 
 		#Visit all children of this node
 		FuncCallVisitor.generic_visit(self, node);
@@ -127,6 +138,13 @@ class LineNumberVisitor(c_ast.NodeVisitor):
 	def generic_visit(self, node):
 		"""Overrides the standard generic_visit to find the node on the specified line number"""
 
+		#
+		if (isinstance(node, c_ast.FuncCall)):
+			global funcCalls;
+			if (node.name not in funcCalls.keys()):
+				funcCalls[node.name] = []
+			funcCalls[node.name].append(node);
+
 		#We will never need to find the FileAST node
 		if (not isinstance(node, c_ast.FileAST)):
 			#Keeps track of the function we are currently inside of
@@ -146,7 +164,7 @@ class LineNumberVisitor(c_ast.NodeVisitor):
 			#Figure out if we have a node from that line number
 			lineNumber = node.coord.line;
 			if (lineNumber is not None and lineNumber == self.lineno):
-				print("Located node on line " + str(lineNumber));
+				print("Located vulnerable node on line " + str(lineNumber));
 				self.ast_node = node;
 				return;
 
@@ -164,8 +182,6 @@ class LineNumberVisitor(c_ast.NodeVisitor):
 #
 def parseForCFG(filename, lineNo):
 	"""Parse the file filename for a Control Flow Graph starting at lineNo"""
-	global rootNode;
-	rootNode = CFGNode("", None)
 
 	#Create the AST to parse
 	ast = parse_file(filename, use_cpp=True)
@@ -177,18 +193,28 @@ def parseForCFG(filename, lineNo):
 	if (vulnerableNode == None):
 		print("ERROR (FATAL): unable to retrieve node for line " + str(lineno));
 		sys.exit();
-
-	#Trace that upwards once to get the (methodName, methodNode) that the specified line is inside of
 	
+	global rootNode;
+	rootNode = CFGNode("Line " + str(lineNo), None);
+	lineFuncNode = CFGNode(lnv.lastFuncDefName, lnv.lastFuncDefNode);
+	rootNode.add_child(lineFuncNode);
+	lineFuncNode.add_parent(rootNode);
 
 	#Add those to the methodQueue
-	methodQueue.append( (lnv.lastFuncDefName, lnv.lastFuncDefNode) );
+	methodQueue.append( (lnv.lastFuncDefName, lineFuncNode) );
 
 	#Parse continually while we have methods to look for in the methodQueue
+	v = FuncCallVisitor('', None);
 	while (methodQueue):
 		methodName, methodNode = methodQueue.pop(0);
-		v = FuncCallVisitor(methodName);
+		v.funcname = methodName;
+		v.currentCFGNode = methodNode;
+		v.parentList = [];
 		v.visit(ast)
+
+	print();
+	print();
+	rootNode.print_tree(0);
 
 	return rootNode;
 
