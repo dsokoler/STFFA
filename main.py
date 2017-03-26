@@ -5,7 +5,29 @@ import sys
 # your site-packages/ with setup.py
 sys.path.extend(['.', '..'])
 
-from pycparser import c_parser, c_ast, parse_file
+importError = False;
+
+try:
+	import networkx
+except ImportError:
+	print("Please install NetworkX: 'pip install networkx'");
+	importError = True;
+
+try:
+	import matplotlib
+except ImportError:
+	print("Please install MatPlotLib: 'pip install matplotlib'");
+	importError = True;
+
+try:
+	from pycparser import c_parser, c_ast, parse_file
+except ImportError:
+	print("Please install PyCParser: 'pip install pycparser'");
+	importError = True;
+
+if (importError):
+	sys.exit(1);
+
 
 methodQueue = [];		#Queue of tuples (methodName, methodNode) of methods we're tracing.  methodNode is the CFGNode of the method
 rootNode 	= None;		#The root of our tree
@@ -217,6 +239,13 @@ def parseForCFG(filename, lineNo):
 	rootNode.print_tree(0);
 
 	return rootNode;
+
+
+
+def visualize(rootNode):
+	"""Plots the tree starting at 'rootNode' is a visually pleasing format"""
+	pass;
+
 
 
 if __name__ == "__main__":
