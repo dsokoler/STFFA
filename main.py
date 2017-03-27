@@ -8,13 +8,25 @@ sys.path.extend(['.', '..'])
 importError = False;
 
 try:
-	import networkx
+	import networkx as nx
 except ImportError:
 	print("Please install NetworkX: 'pip install networkx'");
 	importError = True;
 
 try:
-	import matplotlib
+	import graphviz as gv
+except ImportError:
+	print("Please install GraphViz: 'pip install graphviz'");
+	importError = True;
+
+try:
+	import numpy as np
+except ImportError:
+	print("Please install numpy: 'pip install numpy'");
+	importError = True;
+
+try:
+	import matplotlib.pyplot as plt
 except ImportError:
 	print("Please install MatPlotLib: 'pip install matplotlib'");
 	importError = True;
@@ -243,9 +255,41 @@ def parseForCFG(filename, lineNo):
 
 
 def visualize(rootNode):
-	"""Plots the tree starting at 'rootNode' is a visually pleasing format"""
-	pass;
+	"""Plots the tree starting at 'rootNode' is a visually pleasing format using NetworkX"""
+	G = nx.DiGraph();	#The graph itself
+	stack = [rootNode];	#Stack for a depth first creation of the graph
 
+	#Stack is empty when the DFS has finished
+	while (stack):
+		curr_node = stack.pop(0);
+
+		#Add a link from parent to child
+		for child in curr_node.children:
+			stack.append(child);
+
+			#To go from start of program to vulnerable point swap these two arguments
+			G.add_edge(curr_node.function, child.function);
+
+	nx.draw(G, with_labels=True);
+	plt.show();
+
+
+def visualize2(fileName, rootNode):
+	"""Plots the tree starting at 'rootNode' is a visually pleasing format using GraphViz"""
+	G = gv.Digraph('G', filename=fileName);
+
+	stack = [rootNode];
+	while (stack):
+		curr_node = stack.pop(0);
+
+		#Add a link from parent to child
+		for child in curr_node.children:
+			stack.append(child);
+
+			#To go from start of program to vulnerable point swap these two arguments
+			G.edge(curr_node.function, child.function);
+
+	G.view();
 
 
 if __name__ == "__main__":
@@ -265,5 +309,7 @@ if __name__ == "__main__":
 		print("LineNo: " + str(lineno));
 
 		CFG = parseForCFG(filename, lineno)
+		visualize(CFG);
+		visualize2(filename + "DOT", CFG);
 	except KeyboardInterrupt:
 		exit();
