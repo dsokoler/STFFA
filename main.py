@@ -8,33 +8,33 @@ sys.path.extend(['.', '..'])
 importError = False;
 
 try:
-	import networkx as nx
+	from pycparser import c_parser, c_ast, parse_file
 except ImportError:
-	print("Please install NetworkX: 'pip install networkx'");
-	importError = True;
-
-try:
-	import graphviz as gv
-except ImportError:
-	print("Please install GraphViz: 'pip install graphviz'");
+	print("Please install PyCParser");
 	importError = True;
 
 try:
 	import numpy as np
 except ImportError:
-	print("Please install numpy: 'pip install numpy'");
+	print("Please install numpy");
+	importError = True;
+
+try:
+	import graphviz as gv
+except ImportError:
+	print("Please install GraphViz");
+	importError = True;
+
+try:
+	import networkx as nx
+except ImportError:
+	print("Please install NetworkX");
 	importError = True;
 
 try:
 	import matplotlib.pyplot as plt
 except ImportError:
-	print("Please install MatPlotLib: 'pip install matplotlib'");
-	importError = True;
-
-try:
-	from pycparser import c_parser, c_ast, parse_file
-except ImportError:
-	print("Please install PyCParser: 'pip install pycparser'");
+	print("Please install MatPlotLib");
 	importError = True;
 
 if (importError):
