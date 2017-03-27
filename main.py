@@ -26,12 +26,6 @@ except ImportError:
 	importError = True;
 
 try:
-	import networkx as nx
-except ImportError:
-	print("Please install NetworkX");
-	importError = True;
-
-try:
 	import matplotlib.pyplot as plt
 except ImportError:
 	print("Please install MatPlotLib");
@@ -253,28 +247,7 @@ def parseForCFG(filename, lineNo):
 	return rootNode;
 
 
-
-def visualize(rootNode):
-	"""Plots the tree starting at 'rootNode' is a visually pleasing format using NetworkX"""
-	G = nx.DiGraph();	#The graph itself
-	stack = [rootNode];	#Stack for a depth first creation of the graph
-
-	#Stack is empty when the DFS has finished
-	while (stack):
-		curr_node = stack.pop(0);
-
-		#Add a link from parent to child
-		for child in curr_node.children:
-			stack.append(child);
-
-			#To go from start of program to vulnerable point swap these two arguments
-			G.add_edge(curr_node.function, child.function);
-
-	nx.draw(G, with_labels=True);
-	plt.show();
-
-
-def visualize2(fileName, rootNode):
+def visualize(fileName, rootNode):
 	"""Plots the tree starting at 'rootNode' is a visually pleasing format using GraphViz"""
 	G = gv.Digraph('G', filename=fileName);
 
@@ -287,7 +260,8 @@ def visualize2(fileName, rootNode):
 			stack.append(child);
 
 			#To go from start of program to vulnerable point swap these two arguments
-			G.edge(curr_node.function, child.function);
+			#G.edge(curr_node.function, child.function);
+			G.edge(child.function, curr_node.function);
 
 	G.view();
 
@@ -309,7 +283,6 @@ if __name__ == "__main__":
 		print("LineNo: " + str(lineno));
 
 		CFG = parseForCFG(filename, lineno)
-		visualize(CFG);
-		visualize2(filename + "DOT", CFG);
+		visualize(filename + "DOT", CFG);
 	except KeyboardInterrupt:
 		exit();
