@@ -105,6 +105,17 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 						print("ERROR (FATAL): upward parent trace reached FileAST node");
 						sys.exit();
 
+					#TODO: Logic for dealing with if, else if, else constructs goes here
+					if (isinstance(isDefinedIn, c_ast.If)):
+						#isDefinedIn.cond is the BinaryOp object (the condition for the if statement)
+						#isDefinedIn.iftrue/iffalse are c_ast.Compound objects (which have the ast nodes for that path's code)
+						pass;
+
+					#TODO: Logic for dealing with switch statements goes here
+					if (isinstance(isDefinedIn, c_ast.Switch)):
+						#isDefinedIn.cond is the BinaryOp object
+						pass;
+
 					numberAboveCurrent -= 1;
 					isDefinedIn = self.parentList[numberAboveCurrent];
 
@@ -213,6 +224,8 @@ def parseForCFG(filename, lineNo):
 
 	#Create the AST to parse
 	ast = parse_file(filename, use_cpp=True)
+	#ast.show();
+	#sys.exit();
 
 	#Given the line number, find the node of that line number
 	lnv = LineNumberVisitor(lineNo);
