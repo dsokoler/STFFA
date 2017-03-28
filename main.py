@@ -177,6 +177,10 @@ class LineNumberVisitor(c_ast.NodeVisitor):
 	def generic_visit(self, node):
 		"""Overrides the standard generic_visit to find the node on the specified line number"""
 
+		#We found our node on the line, don't do anything more
+		if (self.ast_node is not None):
+			return;
+
 		#
 		if (isinstance(node, c_ast.FuncCall)):
 			global funcCalls;
@@ -203,7 +207,6 @@ class LineNumberVisitor(c_ast.NodeVisitor):
 			#Figure out if we have a node from that line number
 			lineNumber = node.coord.line;
 			if (lineNumber is not None and lineNumber == self.lineno):
-				print("Located vulnerable node on line " + str(lineNumber));
 				self.ast_node = node;
 				return;
 
@@ -260,8 +263,12 @@ def parseForCFG(filename, lineNo):
 	return rootNode;
 
 
-def visualize(fileName, rootNode):
-	"""Plots the tree starting at 'rootNode' is a visually pleasing format using GraphViz"""
+def visualize(fileName, rootNode, direction):
+	"""Plots the tree starting at 'rootNode' is a visually pleasing format using GraphViz
+		fileName: the name of the file in which the visual of the graph will be stored
+		rootNode: the start of the graph to visualize
+		direction: do we display from start->vulnerability (0) or vulnerability->start (1)?
+	"""
 	G = gv.Digraph('G', filename=fileName);
 
 	stack = [rootNode];
@@ -273,8 +280,14 @@ def visualize(fileName, rootNode):
 			stack.append(child);
 
 			#To go from start of program to vulnerable point swap these two arguments
-			#G.edge(curr_node.function, child.function);
-			G.edge(child.function, curr_node.function);
+			if (direction == 0):
+				G.edge(child.function, curr_node.function);
+			elif (direction == 1):
+				G.edge(curr_node.function, child.function);
+			else:
+				print("ERROR: incorrect direction to visualize: " + str(direction));
+				print("\tDirection should be 0 or 1");
+				return;
 
 	G.view();
 
@@ -289,13 +302,13 @@ if __name__ == "__main__":
 				print("LineNumber should be an integer");
 				sys.exit();
 		else:
-			filename = 'testCFile.c';
-			lineno = 26;
+			filename = 'third.c';
+			lineno = 16;
 
 		print("FileName: " + filename);
 		print("LineNo: " + str(lineno));
 
 		CFG = parseForCFG(filename, lineno)
-		visualize(filename + "DOT", CFG);
+		visualize(filename + "DOT", CFG, 0);
 	except KeyboardInterrupt:
 		exit();
