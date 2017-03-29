@@ -116,6 +116,14 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 						#isDefinedIn.cond is the BinaryOp object
 						pass;
 
+					#TODO: Logic for dealing with for loops goes here
+					if (isinstance(isDefinedIn, c_ast.For)):
+						pass;
+
+					#TODO: Logic for dealing with while loops goes here
+					if (isinstance(isDefinedIn, c_ast.While)):
+						pass;
+
 					numberAboveCurrent -= 1;
 					isDefinedIn = self.parentList[numberAboveCurrent];
 
