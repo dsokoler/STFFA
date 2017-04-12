@@ -100,29 +100,51 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 				#Upwards trace of c_ast nodes until we find the FuncDef that 'node' is inside of
 				numberAboveCurrent = -1;
 				isDefinedIn = self.parentList[numberAboveCurrent];
+				conditionsAndLoops = [];	#Holds CFGNodes (in order) that represent if/else/switch/for/while
+				inIfRecurse = False;
 				while (not isinstance(isDefinedIn, c_ast.FuncDef)):
 					if (isinstance(isDefinedIn, c_ast.FileAST)):	#If we get to the top of the AST something really bad happened
 						print("ERROR (FATAL): upward parent trace reached FileAST node");
 						sys.exit();
 
-					#TODO: Logic for dealing with if, else if, else constructs goes here
+					#TODO: Figure out how if/elif/elif/elif/else works and update logic
 					if (isinstance(isDefinedIn, c_ast.If)):
-						#isDefinedIn.cond is the BinaryOp object (the condition for the if statement)
-						#isDefinedIn.iftrue/iffalse are c_ast.Compound objects (which have the ast nodes for that path's code)
-						pass;
+						#Get the BinaryOP and then the string representing it
+						conditionString = resolveToString(isDefinedIn.cond);
+
+						#Get the compound reperesenting the outcome of this if's flow that we came from
+						ifCompound = self.parentList[numberAboveCurrent + 1];
+
+						#If we're in an If recurse or the compound was the false part of the if/else, this must resolve to false
+						if (inIfRecurse or ifCompound is isDefinedIn.children()[2]):
+							conditionString += " is False";
+
+						#If the compound we just came form is 1st child, the if statement BinaryOp must be true
+						elif (ifCompound is isDefinedIn.children()[1]):
+							conditionString += " is True";
+
+						#Indicate we may be in an upwards recusive if/else if/else tree
+						inIfRecurse = True;
 
 					#TODO: Logic for dealing with switch statements goes here
-					if (isinstance(isDefinedIn, c_ast.Switch)):
+					elif (isinstance(isDefinedIn, c_ast.Switch)):
 						#isDefinedIn.cond is the BinaryOp object
-						pass;
+						inIfRecurse = False;
 
 					#TODO: Logic for dealing with for loops goes here
-					if (isinstance(isDefinedIn, c_ast.For)):
-						pass;
+					elif (isinstance(isDefinedIn, c_ast.For)):
+						inIfRecurse = False;
 
 					#TODO: Logic for dealing with while loops goes here
-					if (isinstance(isDefinedIn, c_ast.While)):
-						pass;
+					elif (isinstance(isDefinedIn, c_ast.While)):
+						inIfRecurse = False;
+
+					#TODO: Logic for dealing with dowhile loops goes here
+					elif (isinstance(isDefinedIn, c_ast.DoWhile)):
+						inIfRecurse = False;
+
+					else:
+						inIfRecurse = False;
 
 					numberAboveCurrent -= 1;
 					isDefinedIn = self.parentList[numberAboveCurrent];
@@ -224,6 +246,94 @@ class LineNumberVisitor(c_ast.NodeVisitor):
 				self.visit(c);
 
 
+def parseBinaryOp(binOp):
+	"""Returns a string representing the condition for the condition tree specified, binOP is a BinaryOP object"""
+	
+	#TODO: Make this deal with groupings of conditionals
+	#		E.g. if ( (x > 10 || y > 1) && z == 1 )
+
+	#ifRoot.left goes before the current string, ifRoot.left goes after the current string
+	string = binOp.op;
+
+	#If the child is a BinaryOP we need to recurse again
+	if (isinstance(binOp.left, c_ast.BinaryOp)):
+		string = (parseBinaryOp(binOp.left) + string);
+	else:
+		string = (resolveToString(binOp.left) + string);
+
+	if (isinstance(binOp.right, c_ast.BinaryOp)):
+		string += parseBinaryOp(binOp.right);
+	else:
+		string += resolveToString(binOp.right);
+
+	print("parseBinaryOP returning '%s'" % (string));
+	return string;
+
+
+#TODO
+def resolveToString(node):
+	"""Takes the PyCParser node and returns a string representation of it"""
+	#TODO: the better way to do this would be by anonymous function
+	#		the methods would be toStringNODECLASS(node):
+	#		You'd simply append the name of the node class to 'toString' and call it, no giant if/elif need
+	#TODO: only include the nodes we actually need (or not, as we don't know what we'll need)
+	#NOTE: Even easier would be if these classes just had a damn __str__ method!!!!!!!!
+
+	#ArrayDecl
+	#ArrayRef
+	#Assignment
+	#BinaryOp
+	if (isinstance(node, c_ast.BinaryOp)):
+		return parseBinaryOp(node);
+	#Break
+	#Case
+	#Cast
+	#Compound
+	#CompoundLiteral
+	#Constant
+	if (isinstance(node, c_ast.Constant)):
+		return node.value;
+	#Continue
+	#Decl
+	#DeclList
+	#Default
+	#DoWhile
+	#EllipsisParam
+	#EmptyStatement
+	#Enum
+	#Enumerator
+	#EnumeratorList
+	#ExprList
+	#FileAST
+	#For
+	#FuncCall 	NOTE: not actually sure what would happen here?
+	#FuncDecl
+	#FuncDef
+	#Goto
+	#ID
+	if (isinstance(node, c_ast.ID)):
+		return node.name;
+	#IdentifierType
+	#If
+	#InitList
+	#Label
+	#NamedInitializer
+	#ParamList
+	#PtrDecl
+	#Return
+	#Struct
+	#StructRef
+	#Switch
+	#TernaryOp
+	#TypeDecl
+	#Typedef
+	#Typename
+	#UnaryOp
+	#Union
+	#While
+	#Pragma
+
+
 #
 #For each methodName, methodNode in methodQueue:
 #	Find each instance of the function call, put those in a queue
@@ -234,9 +344,7 @@ def parseForCFG(filename, lineNo):
 	"""Parse the file filename for a Control Flow Graph starting at lineNo"""
 
 	#Create the AST to parse
-	ast = parse_file(filename, use_cpp=True)
-	#ast.show();
-	#sys.exit();
+	ast = parse_file(filename, use_cpp=True);
 
 	#Given the line number, find the node of that line number
 	lnv = LineNumberVisitor(lineNo);
@@ -300,9 +408,35 @@ def visualize(fileName, rootNode, direction):
 	G.view();
 
 
+
+def visualizeAST(rootNode, fileName):
+	G = gv.Digraph('G', filename=("AST" + fileName));
+
+	stack = [rootNode];
+	while (stack):
+		curr_node = stack.pop(0);
+		nodeName1 = curr_node.__class__.__name__;
+		if (curr_node.attr_names):
+			vlist = [getattr(curr_node, n) for n in curr_node.attr_names]
+			attrstr = ', '.join('%s' % v for v in vlist)
+			nodeName1 += (': ' + attrstr);
+		
+		for c, child in curr_node.children():
+			stack.append(child);
+
+			nodeName2 = child.__class__.__name__;
+			if (child.attr_names):
+				vlist = [getattr(child, n) for n in child.attr_names]
+				attrstr = ', '.join('%s' % v for v in vlist)
+				nodeName2 += (': ' + attrstr);
+			G.edge(nodeName1, nodeName2);
+
+	G.view();
+
+
 if __name__ == "__main__":
 	try:
-		if len(sys.argv) > 3:	#programName filename linenumber
+		if len(sys.argv) == 3:	#programName filename linenumber
 			filename = sys.argv[1];
 			try:
 				lineno = int(sys.argv[2]);
