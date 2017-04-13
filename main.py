@@ -44,7 +44,7 @@ funcCalls 	= {};		# FunctionName: [List of FuncCall nodes for that function]
 						# need to find another way to deal with the upwards trace/parent links
 
 funcDefCFGNodes = {}	# FunctionName: CFGNode
-
+globalNodeID = 0;
 
 class CFGNode():
 	"""
@@ -58,6 +58,10 @@ class CFGNode():
 		self.parents 	= [];		#List of CFGNode that call this function (who calls this function)
 		self.children 	= [];		#List of CFGNode called by this function (who this function calls)
 		self.info 		= ast_info;	#Info about said node, most likely will be the actual AST node
+		
+		global globalNodeID;
+		self.uniqueID	= str(globalNodeID);
+		globalNodeID 	+= 1;
 
 	def __repr__(self):
 		return self.function;
@@ -68,6 +72,18 @@ class CFGNode():
 	def add_child(self, child):
 		"""Add a child node to this node"""
 		self.children.append(child);
+
+	def add_children_depth(self, children):
+		"""Adds a list of children vertically :: returns the last child in the list"""
+		lastNode = self;
+		for child in children:
+			#No duplicates!
+			if (not any(node.function == child.function for node in self.children)):
+				lastNode.add_child(child);
+				child.add_parent(lastNode);
+				lastNode = child;
+
+		return lastNode;
 
 	def add_parent(self, parent):
 		"""Add a parent node to this node"""
@@ -107,7 +123,7 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 						print("ERROR (FATAL): upward parent trace reached FileAST node");
 						sys.exit();
 
-					#TODO: Figure out how if/elif/elif/elif/else works and update logic
+					#Deals with if/else if[ else if [ else if...]]/else
 					if (isinstance(isDefinedIn, c_ast.If)):
 						#Get the BinaryOP and then the string representing it
 						conditionString = resolveToString(isDefinedIn.cond);
@@ -117,15 +133,16 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 
 						#If we're in an If recurse or the compound was the false part of the if/else, this must resolve to false
 						if (inIfRecurse or ifCompound is isDefinedIn.iffalse):
-							conditionString += " : False";
+							conditionString += "::False";
 
 						#If the compound we just came form is 1st child, the if statement BinaryOp must be true
 						elif (ifCompound is isDefinedIn.iftrue):
-							conditionString += " : True";
+							conditionString += "::True";
 
 						#Indicate we may be in an upwards recusive if/else if/else tree
 						inIfRecurse = True;
 
+						#Because of the upwards trace, we see these in an order reverse to their flow
 						conditionsAndLoops.insert(0, CFGNode(conditionString, isDefinedIn) );
 
 					#TODO: Logic for dealing with switch statements goes here
@@ -172,10 +189,15 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 						newNode = CFGNode(methodName, isDefinedIn);			#Make the new CFGNode
 						funcDefCFGNodes[methodName] = newNode;
 
+					#Add the list of conditionals if we need to
+					self.currentCFGNode = self.currentCFGNode.add_children_depth(conditionsAndLoops);
+
 					self.currentCFGNode.add_child(newNode);				#Add the new CFGNode as a child of the current CFGNode
 					newNode.add_parent(self.currentCFGNode);			#Add the current CFGNode as a parent of the new CFGNode
 					methodQueue.append( (methodName, newNode) );		#Add the method we found it in to the methodQueue
 				else:
+					#Add the list of conditionals if we need to
+					self.currentCFGNode = self.currentCFGNode.add_children_depth(conditionsAndLoops);
 					self.currentCFGNode.add_child(funcDefCFGNodes[methodName]);
 					funcDefCFGNodes[methodName].add_parent(self.currentCFGNode);
 
@@ -392,6 +414,7 @@ def visualize(fileName, rootNode, direction):
 	G = gv.Digraph('G', filename=fileName);
 
 	stack = [rootNode];
+	G.node(rootNode.uniqueID, rootNode.function);
 	while (stack):
 		curr_node = stack.pop(0);
 
@@ -400,10 +423,12 @@ def visualize(fileName, rootNode, direction):
 			stack.append(child);
 
 			#To go from start of program to vulnerable point swap these two arguments
+			print("Adding edge between %s and %s" % (child.function, curr_node.function))
+			G.node(child.uniqueID, child.function);
 			if (direction == 0):
-				G.edge(child.function, curr_node.function);
+				G.edge(child.uniqueID, curr_node.uniqueID);
 			elif (direction == 1):
-				G.edge(curr_node.function, child.function);
+				G.edge(curr_node.uniqueID, child.uniqueID);
 			else:
 				print("ERROR: incorrect direction to visualize: " + str(direction));
 				print("\tDirection should be 0 or 1");
