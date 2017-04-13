@@ -100,7 +100,7 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 				#Upwards trace of c_ast nodes until we find the FuncDef that 'node' is inside of
 				numberAboveCurrent = -1;
 				isDefinedIn = self.parentList[numberAboveCurrent];
-				conditionsAndLoops = [];	#Holds CFGNodes (in order) that represent if/else/switch/for/while
+				conditionsAndLoops = [];	#Holds CFGNodes (in order) that represent if/else/switch/for/while.  If the entire list is false evaluations then this path is an else
 				inIfRecurse = False;
 				while (not isinstance(isDefinedIn, c_ast.FuncDef)):
 					if (isinstance(isDefinedIn, c_ast.FileAST)):	#If we get to the top of the AST something really bad happened
@@ -116,15 +116,17 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 						ifCompound = self.parentList[numberAboveCurrent + 1];
 
 						#If we're in an If recurse or the compound was the false part of the if/else, this must resolve to false
-						if (inIfRecurse or ifCompound is isDefinedIn.children()[2]):
-							conditionString += " is False";
+						if (inIfRecurse or ifCompound is isDefinedIn.iffalse):
+							conditionString += " : False";
 
 						#If the compound we just came form is 1st child, the if statement BinaryOp must be true
-						elif (ifCompound is isDefinedIn.children()[1]):
-							conditionString += " is True";
+						elif (ifCompound is isDefinedIn.iftrue):
+							conditionString += " : True";
 
 						#Indicate we may be in an upwards recusive if/else if/else tree
 						inIfRecurse = True;
+
+						conditionsAndLoops.insert(0, CFGNode(conditionString, isDefinedIn) );
 
 					#TODO: Logic for dealing with switch statements goes here
 					elif (isinstance(isDefinedIn, c_ast.Switch)):
@@ -148,6 +150,8 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 
 					numberAboveCurrent -= 1;
 					isDefinedIn = self.parentList[numberAboveCurrent];
+
+				print(str(conditionsAndLoops));
 
 				#Get the name and location of the function we are in
 				methodName = isDefinedIn.decl.name;
@@ -266,7 +270,7 @@ def parseBinaryOp(binOp):
 	else:
 		string += resolveToString(binOp.right);
 
-	print("parseBinaryOP returning '%s'" % (string));
+	#print("parseBinaryOP returning '%s'" % (string));
 	return string;
 
 
