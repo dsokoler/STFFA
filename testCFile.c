@@ -8,7 +8,10 @@ int main(int argc, char* argv[]) {
 	int z = 7;
 	
 	if (x > 10) {
-		foo(argv[1]);
+		int i;
+		for (i = x; i < z; i--) {
+			foo(argv[1]);
+		}
 	}
 	//Not finding this foo??
 	else if (y < 10) {

@@ -153,6 +153,7 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 					#TODO: Logic for dealing with for loops goes here
 					elif (isinstance(isDefinedIn, c_ast.For)):
 						inIfRecurse = False;
+						forString = resolveToString(isDefinedIn);
 
 					#TODO: Logic for dealing with while loops goes here
 					elif (isinstance(isDefinedIn, c_ast.While)):
@@ -272,30 +273,6 @@ class LineNumberVisitor(c_ast.NodeVisitor):
 				self.visit(c);
 
 
-def parseBinaryOp(binOp):
-	"""Returns a string representing the condition for the condition tree specified, binOP is a BinaryOP object"""
-	
-	#TODO: Make this deal with groupings of conditionals
-	#		E.g. if ( (x > 10 || y > 1) && z == 1 )
-
-	#ifRoot.left goes before the current string, ifRoot.left goes after the current string
-	string = binOp.op;
-
-	#If the child is a BinaryOP we need to recurse again
-	if (isinstance(binOp.left, c_ast.BinaryOp)):
-		string = (parseBinaryOp(binOp.left) + string);
-	else:
-		string = (resolveToString(binOp.left) + string);
-
-	if (isinstance(binOp.right, c_ast.BinaryOp)):
-		string += parseBinaryOp(binOp.right);
-	else:
-		string += resolveToString(binOp.right);
-
-	#print("parseBinaryOP returning '%s'" % (string));
-	return string;
-
-
 #TODO
 def resolveToString(node):
 	"""Takes the PyCParser node and returns a string representation of it"""
@@ -307,40 +284,90 @@ def resolveToString(node):
 
 	#ArrayDecl
 	#ArrayRef
+	if (isinstance(node, c_ast.ArrayRef)):
+		name = resolveToString(node.name);
+		subscript = resolveToString(node.subscript);
+		return (name + '[' + subscript + ']');
 	#Assignment
+	if (isinstance(node, c_ast.Assignment)):
+		assign = str(node.op);
+		lval = str(resolveToString(node.lvalue));
+		rval = str(resolveToString(node.rvalue));
+		return (lval + assign + rval);
 	#BinaryOp
 	if (isinstance(node, c_ast.BinaryOp)):
-		return parseBinaryOp(node);
+		string = node.op;
+
+		#If the child is a BinaryOP we need to recurse again
+		if (isinstance(node.left, c_ast.BinaryOp)):
+			string = (resolveToString(node.left) + string);
+		else:
+			string = (resolveToString(node.left) + string);
+
+		if (isinstance(node.right, c_ast.BinaryOp)):
+			string += resolveToString(node.right);
+		else:
+			string += resolveToString(node.right);
+
+		return string;
 	#Break
 	#Case
+	if (isinstance(node, c_ast.Case)):
+		return resolveToString(node.expr);
 	#Cast
 	#Compound
+	if (isinstance(node, c_ast.Compound)):
+		print("ERROR: we should never be resolving 'Compound' to a string");
+		return;
 	#CompoundLiteral
 	#Constant
 	if (isinstance(node, c_ast.Constant)):
-		return node.value;
+		return (node.value);
 	#Continue
 	#Decl
 	#DeclList
 	#Default
 	#DoWhile
+	if (isinstance(node, c_ast.DoWhile)):
+		cond = resolveToString(node.cond);
+		return ("DoWhile(" + cond + ')');
 	#EllipsisParam
 	#EmptyStatement
 	#Enum
 	#Enumerator
 	#EnumeratorList
 	#ExprList
+	if (isinstance(node, c_ast.ExprList)):
+		ret = "";
+		for expr in node.exprs:
+			ret += (', ' + resolveToString(expr));
+
+		return ret[2:];
 	#FileAST
 	#For
-	#FuncCall 	NOTE: not actually sure what would happen here?
+	if (isinstance(node, c_ast.For)):
+		init = resolveToString(node.init);
+		cond = resolveToString(node.cond);
+		nxt = resolveToString(node.next);
+		return (init + "; " + cond + "; " + nxt + ";");
+	#FuncCall
+	if (isinstance(node, c_ast.FuncCall)):
+		name = resolveToString(node.name);
+		args = resolveToString(node.args);
+		return (name + '(' + args + ')');
 	#FuncDecl
 	#FuncDef
 	#Goto
+	if (isinstance(node, c_ast.Goto)):
+		return ("Goto " + resolveToString(node.name));
 	#ID
 	if (isinstance(node, c_ast.ID)):
 		return node.name;
 	#IdentifierType
 	#If
+	if (isinstance(node, c_ast.If)):
+		cond = resolveToString(node.cond);
+		return ("if (" + cond + ')');
 	#InitList
 	#Label
 	#NamedInitializer
@@ -350,14 +377,31 @@ def resolveToString(node):
 	#Struct
 	#StructRef
 	#Switch
+	if (isinstance(node, c_ast.Switch)):
+		cond = resolveToString(node.cond);
+		return ("switch (" + cond + ')');
 	#TernaryOp
+	if (isinstance(node, c_ast.TernaryOp)):
+		cond = resolveToString(node.cond);
+		iftrue = resolveToString(node.iftrue);
+		iffalse = resolveToString(node.iffalse);
+		return (cond + ' ? ' + iftrue + ' : ' + iffalse);
 	#TypeDecl
 	#Typedef
 	#Typename
 	#UnaryOp
+	if (isinstance(node, c_ast.UnaryOp)):
+		op = str(node.op);
+		expr = resolveToString(node.expr);
+		return (expr + op[1:]);
 	#Union
 	#While
+	if (isinstance(node, c_ast.While)):
+		cond = resolveToString(node.cond);
+		return ("while (" + cond + ')');
 	#Pragma
+	if (isinstance(node, c_ast.Pragma)):
+		return ("pragma " + node.string);
 
 
 #
@@ -423,7 +467,7 @@ def visualize(fileName, rootNode, direction):
 			stack.append(child);
 
 			#To go from start of program to vulnerable point swap these two arguments
-			print("Adding edge between %s and %s" % (child.function, curr_node.function))
+			print("Adding edge between %s (%s) and %s (%s)" % (child.function, child.uniqueID, curr_node.function, curr_node.uniqueID))
 			G.node(child.uniqueID, child.function);
 			if (direction == 0):
 				G.edge(child.uniqueID, curr_node.uniqueID);
@@ -465,6 +509,8 @@ def visualizeAST(rootNode, fileName):
 
 if __name__ == "__main__":
 	try:
+		#TODO: take in another optional argument, the place we end the search at (either line number or function name)
+		#		This allows us to find flows from line# to line # or function to function
 		if len(sys.argv) == 3:	#programName filename linenumber
 			filename = sys.argv[1];
 			try:
@@ -474,7 +520,7 @@ if __name__ == "__main__":
 				sys.exit();
 		else:
 			filename = 'third.c';
-			lineno = 16;
+			lineno = 41;
 
 		print("FileName: " + filename);
 		print("LineNo: " + str(lineno));
