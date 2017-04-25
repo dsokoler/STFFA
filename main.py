@@ -145,7 +145,7 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 
 						#Make the new node if it doesn't already exist
 						if (not astToCfg[isDefinedIn][conditionResult]):
-							conditionString = resolveToString(isDefinedIn.cond);
+							conditionString = resolveToString(isDefinedIn);
 							newNode = None;
 							if (conditionResult == 0):
 								newNode = CFGNode(conditionString + " :: True", isDefinedIn);
@@ -543,7 +543,7 @@ def parseForCFG(filename, lineNo):
 	return rootNode;
 
 
-def visualize(fileName, rootNode, direction):
+def visualize(fileName, rootNode, direction, strict=False):
 	"""Plots the tree starting at 'rootNode' is a visually pleasing format using GraphViz
 		fileName: the name of the file in which the visual of the graph will be stored
 		rootNode: the start of the graph to visualize
@@ -620,6 +620,6 @@ if __name__ == "__main__":
 		print("LineNo: " + str(lineno));
 
 		CFG = parseForCFG(filename, lineno)
-		visualize(filename + "DOT", CFG, 0);
+		visualize(filename + "DOT", CFG, 0, strict=True);
 	except KeyboardInterrupt:
 		exit();
