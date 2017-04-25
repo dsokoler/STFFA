@@ -9,19 +9,37 @@ int main(int argc, char* argv[]) {
 	
 	if (x > 10) {
 		int i;
-		for (i = x; i < z; i--) {
+		do {
 			foo(argv[1]);
 		}
+		while(x < y);
 	}
 	//Not finding this foo??
 	else if (y < 10) {
-		foo(argv[1]);
+		switch(y) {
+			case 1:
+				break;
+			case 2:
+				break;
+			case 3:
+				break;
+			case 6:
+				foo(argv[1]);
+			default:
+				bar(argv[1]);
+		}
 	}
 	else if (x > 10 && y < 10) {
-		bar(argv[1]);
+		int i;
+		for (i = 0; i < x; i++) {
+			bar(argv[1]);
+		}
 	}
-	else if ( (x > 10 || y > 1) && z == 1 ) {
-		bar(argv[1]);
+	else if ( (y > x || y > 1) && z == 1 ) {
+		while(x < y) {
+			bar(argv[1]);
+			x++;
+		}
 	}
 	else {
 		bar(argv[1]);

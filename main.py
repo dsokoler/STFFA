@@ -78,7 +78,7 @@ class CFGNode():
 		else:
 			self.children.append(child);
 			child.parents.append(self);
-			print("Adding %s (%s) to the tree as child of %s (%s)" % (child.function, child.uniqueID, self.function, self.uniqueID));
+			#print("Adding %s (%s) to the tree as child of %s (%s)" % (child.function, child.uniqueID, self.function, self.uniqueID));
 
 	def add_children_depth(self, children, duplicates=True):
 		"""Adds a list of children vertically :: returns the last child in the list"""
@@ -139,10 +139,11 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 						elif (ifCompound is isDefinedIn.iftrue):
 							conditionResult = 0;
 
-						#Make the CFGNode if it doesn't already exist
+						#Ensure we don't get a KeyError
 						if (isDefinedIn not in astToCfg):
 							astToCfg[isDefinedIn] = [None, None];
 
+						#Make the new node if it doesn't already exist
 						if (not astToCfg[isDefinedIn][conditionResult]):
 							conditionString = resolveToString(isDefinedIn.cond);
 							newNode = None;
@@ -160,6 +161,35 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 					#TODO: Logic for dealing with switch statements goes here
 					elif (isinstance(isDefinedIn, c_ast.Switch)):
 						#isDefinedIn.cond is the BinaryOp object
+						inIfRecurse = False;
+
+						#Resolve our strings
+						switchString = resolveToString(isDefinedIn);
+						
+						#If we already have a CFGNode for this ast_node use it, don't make a new one
+						newNode = None;
+						try:
+							newNode = astToCfg[isDefinedIn];
+						except KeyError:
+							newNode = CFGNode(switchString, isDefinedIn);
+							astToCfg[isDefinedIn] = newNode;
+							
+						conditionsAndLoops.append(newNode);
+
+					#This should always be hit before the above Switch elif
+					elif (isinstance(isDefinedIn, c_ast.Case)):
+						caseString = resolveToString(isDefinedIn);
+
+						#If we already have a CFGNode for this ast_node use it, don't make a new one
+						newNode = None;
+						try:
+							newNode = astToCfg[isDefinedIn];
+						except KeyError:
+							newNode = CFGNode(caseString, isDefinedIn);
+							astToCfg[isDefinedIn] = newNode;
+							
+						conditionsAndLoops.append(newNode);
+
 						inIfRecurse = False;
 
 					#For loop
@@ -213,8 +243,6 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 					numberAboveCurrent -= 1;
 					isDefinedIn = self.parentList[numberAboveCurrent];
 
-				print(str(conditionsAndLoops));
-
 				#Get the name and location of the function we are in
 				methodName = isDefinedIn.decl.name;
 				methodLocation = isDefinedIn.decl.coord;
@@ -227,9 +255,6 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 				newNode = None;
 				if (methodName in funcDefCFGNodes.keys()):
 					newNode = funcDefCFGNodes[methodName];
-
-				if (conditionsAndLoops):
-					print("%s ||||||||||| %s" % (self.currentCFGNode.function, conditionsAndLoops[0].function));
 
 				#Make a CFG node for this "new" node, and add it to the methodQueue only if it is not already in the methodQueue
 				if (not any(entry[0] == methodName for entry in methodQueue) ):
@@ -246,8 +271,6 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 					#Add the list of conditionals if we need to
 					lastNode = self.currentCFGNode.add_children_depth(conditionsAndLoops, duplicates=False);
 					lastNode.add_child(funcDefCFGNodes[methodName], duplicates=False);
-
-				print('%s called at %s inside %s declared at %s\n' % (self.funcname, node.name.coord, methodName, methodLocation))
 
 		#Visit all children of this node
 		FuncCallVisitor.generic_visit(self, node);
@@ -360,7 +383,7 @@ def resolveToString(node):
 	#Break
 	#Case
 	if (isinstance(node, c_ast.Case)):
-		return resolveToString(node.expr);
+		return ("case " + resolveToString(node.expr));
 	#Cast
 	#Compound
 	if (isinstance(node, c_ast.Compound)):
@@ -523,7 +546,7 @@ def visualize(fileName, rootNode, direction):
 			stack.append(child);
 
 			#To go from start of program to vulnerable point swap these two arguments
-			print("Adding edge between %s (%s) and %s (%s)" % (child.function, child.uniqueID, curr_node.function, curr_node.uniqueID))
+			#print("Adding edge between %s (%s) and %s (%s)" % (child.function, child.uniqueID, curr_node.function, curr_node.uniqueID))
 			G.node(child.uniqueID, child.function);
 			if (direction == 0):
 				G.edge(child.uniqueID, curr_node.uniqueID);
