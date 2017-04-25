@@ -1,5 +1,5 @@
 from __future__ import print_function
-import sys
+import sys, glob
 
 # This is not required if you've installed pycparser into
 # your site-packages/ with setup.py
@@ -43,6 +43,8 @@ funcCalls 	= {};		# FunctionName: [List of FuncCall nodes for that function]
 						#The problem with using this is that we can no longer get a parent tree, we would
 						# need to find another way to deal with the upwards trace/parent links
 
+astToCfg = {}	#Ast_Node:CFGNode, to keep track of existing AST_nodes
+
 funcDefCFGNodes = {}	# FunctionName: CFGNode
 globalNodeID = 0;
 
@@ -69,25 +71,23 @@ class CFGNode():
 	def __str__(self):
 		return self.function;
 
-	def add_child(self, child):
+	def add_child(self, child, duplicates=True):
 		"""Add a child node to this node"""
-		self.children.append(child);
+		if (not duplicates and any(c.uniqueID == child.uniqueID for c in self.children)):
+			pass;
+		else:
+			self.children.append(child);
+			child.parents.append(self);
+			print("Adding %s (%s) to the tree as child of %s (%s)" % (child.function, child.uniqueID, self.function, self.uniqueID));
 
-	def add_children_depth(self, children):
+	def add_children_depth(self, children, duplicates=True):
 		"""Adds a list of children vertically :: returns the last child in the list"""
 		lastNode = self;
 		for child in children:
-			#No duplicates!
-			if (not any(node.function == child.function for node in self.children)):
-				lastNode.add_child(child);
-				child.add_parent(lastNode);
-				lastNode = child;
+			lastNode.add_child(child, duplicates=duplicates);
+			lastNode = child;
 
 		return lastNode;
-
-	def add_parent(self, parent):
-		"""Add a parent node to this node"""
-		self.parents.append(parent);
 
 	def print_tree(self, spaces):
 		"""Textual version of the CFG from this node downward"""
@@ -126,42 +126,86 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 					#Deals with if/else if[ else if [ else if...]]/else
 					if (isinstance(isDefinedIn, c_ast.If)):
 						#Get the BinaryOP and then the string representing it
-						conditionString = resolveToString(isDefinedIn.cond);
+						conditionResult = None;
 
 						#Get the compound reperesenting the outcome of this if's flow that we came from
 						ifCompound = self.parentList[numberAboveCurrent + 1];
 
 						#If we're in an If recurse or the compound was the false part of the if/else, this must resolve to false
 						if (inIfRecurse or ifCompound is isDefinedIn.iffalse):
-							conditionString += "::False";
+							conditionResult = 1;
 
 						#If the compound we just came form is 1st child, the if statement BinaryOp must be true
 						elif (ifCompound is isDefinedIn.iftrue):
-							conditionString += "::True";
+							conditionResult = 0;
+
+						#Make the CFGNode if it doesn't already exist
+						if (isDefinedIn not in astToCfg):
+							astToCfg[isDefinedIn] = [None, None];
+
+						if (not astToCfg[isDefinedIn][conditionResult]):
+							conditionString = resolveToString(isDefinedIn.cond);
+							newNode = None;
+							if (conditionResult == 0):
+								newNode = CFGNode(conditionString + " :: True", isDefinedIn);
+							else:
+								newNode = CFGNode(conditionString + " :: False", isDefinedIn);
+							astToCfg[isDefinedIn][conditionResult] = newNode;
+							
+						conditionsAndLoops.append(astToCfg[isDefinedIn][conditionResult]);
 
 						#Indicate we may be in an upwards recusive if/else if/else tree
 						inIfRecurse = True;
-
-						#Because of the upwards trace, we see these in an order reverse to their flow
-						conditionsAndLoops.insert(0, CFGNode(conditionString, isDefinedIn) );
 
 					#TODO: Logic for dealing with switch statements goes here
 					elif (isinstance(isDefinedIn, c_ast.Switch)):
 						#isDefinedIn.cond is the BinaryOp object
 						inIfRecurse = False;
 
-					#TODO: Logic for dealing with for loops goes here
+					#For loop
 					elif (isinstance(isDefinedIn, c_ast.For)):
 						inIfRecurse = False;
 						forString = resolveToString(isDefinedIn);
 
-					#TODO: Logic for dealing with while loops goes here
+						#If we already have a CFGNode for this ast_node use it, don't make a new one
+						newNode = None;
+						try:
+							newNode = astToCfg[isDefinedIn];
+						except KeyError:
+							newNode = CFGNode(forString, isDefinedIn);
+							astToCfg[isDefinedIn] = newNode;
+							
+						conditionsAndLoops.append(newNode);
+
+					#While loop
 					elif (isinstance(isDefinedIn, c_ast.While)):
 						inIfRecurse = False;
+						whileString = resolveToString(isDefinedIn);
 
-					#TODO: Logic for dealing with dowhile loops goes here
+						#If we already have a CFGNode for this ast_node use it, don't make a new one
+						newNode = None;
+						try:
+							newNode = astToCfg[isDefinedIn];
+						except KeyError:
+							newNode = CFGNode(whileString, isDefinedIn);
+							astToCfg[isDefinedIn] = newNode;
+							
+						conditionsAndLoops.append(newNode);
+
+					#DoWhile loop
 					elif (isinstance(isDefinedIn, c_ast.DoWhile)):
 						inIfRecurse = False;
+						doWhileString = resolveToString(isDefinedIn);
+
+						#If we already have a CFGNode for this ast_node use it, don't make a new one
+						newNode = None;
+						try:
+							newNode = astToCfg[isDefinedIn];
+						except KeyError:
+							newNode = CFGNode(doWhileString, isDefinedIn);
+							astToCfg[isDefinedIn] = newNode;
+							
+						conditionsAndLoops.append(newNode);
 
 					else:
 						inIfRecurse = False;
@@ -184,23 +228,24 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 				if (methodName in funcDefCFGNodes.keys()):
 					newNode = funcDefCFGNodes[methodName];
 
+				if (conditionsAndLoops):
+					print("%s ||||||||||| %s" % (self.currentCFGNode.function, conditionsAndLoops[0].function));
+
 				#Make a CFG node for this "new" node, and add it to the methodQueue only if it is not already in the methodQueue
 				if (not any(entry[0] == methodName for entry in methodQueue) ):
 					if (newNode is None):
 						newNode = CFGNode(methodName, isDefinedIn);			#Make the new CFGNode
 						funcDefCFGNodes[methodName] = newNode;
+						astToCfg[isDefinedIn] = newNode;
 
 					#Add the list of conditionals if we need to
-					self.currentCFGNode = self.currentCFGNode.add_children_depth(conditionsAndLoops);
-
-					self.currentCFGNode.add_child(newNode);				#Add the new CFGNode as a child of the current CFGNode
-					newNode.add_parent(self.currentCFGNode);			#Add the current CFGNode as a parent of the new CFGNode
+					lastNode = self.currentCFGNode.add_children_depth(conditionsAndLoops, duplicates=False);
+					lastNode.add_child(newNode, duplicates=False);				#Add the new CFGNode as a child of the current CFGNode
 					methodQueue.append( (methodName, newNode) );		#Add the method we found it in to the methodQueue
 				else:
 					#Add the list of conditionals if we need to
-					self.currentCFGNode = self.currentCFGNode.add_children_depth(conditionsAndLoops);
-					self.currentCFGNode.add_child(funcDefCFGNodes[methodName]);
-					funcDefCFGNodes[methodName].add_parent(self.currentCFGNode);
+					lastNode = self.currentCFGNode.add_children_depth(conditionsAndLoops, duplicates=False);
+					lastNode.add_child(funcDefCFGNodes[methodName], duplicates=False);
 
 				print('%s called at %s inside %s declared at %s\n' % (self.funcname, node.name.coord, methodName, methodLocation))
 
@@ -225,8 +270,9 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 class LineNumberVisitor(c_ast.NodeVisitor):
 	"""This class' sole purpose is to find the first c_ast node on a certain line number"""
 
-	def __init__(self, linenumber):
+	def __init__(self, linenumber, file):
 		self.lineno 	= linenumber;	#The line number we are looking for
+		self.fileName 	= file;			#The file in which we are looking for
 		self.ast_node 	= None;			#The node found on the specified linenumber
 		self.lastFuncDefName = None;	#The name of the function this line number is inside of
 		self.lastFuncDefNode = None;	#The FuncDef node this line number is inside of
@@ -262,8 +308,9 @@ class LineNumberVisitor(c_ast.NodeVisitor):
 				return;
 
 			#Figure out if we have a node from that line number
-			lineNumber = node.coord.line;
-			if (lineNumber is not None and lineNumber == self.lineno):
+			lineNumber 	= node.coord.line;
+			nodeFile 	= node.coord.file;
+			if (lineNumber is not None and lineNumber == self.lineno and nodeFile == self.fileName):
 				self.ast_node = node;
 				return;
 
@@ -273,7 +320,7 @@ class LineNumberVisitor(c_ast.NodeVisitor):
 				self.visit(c);
 
 
-#TODO
+
 def resolveToString(node):
 	"""Takes the PyCParser node and returns a string representation of it"""
 	#TODO: the better way to do this would be by anonymous function
@@ -300,14 +347,14 @@ def resolveToString(node):
 
 		#If the child is a BinaryOP we need to recurse again
 		if (isinstance(node.left, c_ast.BinaryOp)):
-			string = (resolveToString(node.left) + string);
+			string = (resolveToString(node.left) + " " + string);
 		else:
-			string = (resolveToString(node.left) + string);
+			string = (resolveToString(node.left) +  " " + string);
 
 		if (isinstance(node.right, c_ast.BinaryOp)):
-			string += resolveToString(node.right);
+			string += (" " + resolveToString(node.right));
 		else:
-			string += resolveToString(node.right);
+			string += (" " + resolveToString(node.right));
 
 		return string;
 	#Break
@@ -349,7 +396,7 @@ def resolveToString(node):
 		init = resolveToString(node.init);
 		cond = resolveToString(node.cond);
 		nxt = resolveToString(node.next);
-		return (init + "; " + cond + "; " + nxt + ";");
+		return ("for (" + init + "; " + cond + "; " + nxt + ")");
 	#FuncCall
 	if (isinstance(node, c_ast.FuncCall)):
 		name = resolveToString(node.name);
@@ -413,11 +460,21 @@ def resolveToString(node):
 def parseForCFG(filename, lineNo):
 	"""Parse the file filename for a Control Flow Graph starting at lineNo"""
 
+	#TODO: need to get this working with multiple C files
+	'''
+	#The root of the ast
+	ast = FileAst();
+
+	#Add to the overall AST each smaller AST file by file (recursing into all lower directories)
+	for f in glob.iglob('**/*.c', recursive=True):
+		ast.ext += CParser.parse_file(f, use_cpp=True).ext;
+	'''
+
 	#Create the AST to parse
 	ast = parse_file(filename, use_cpp=True);
 
 	#Given the line number, find the node of that line number
-	lnv = LineNumberVisitor(lineNo);
+	lnv = LineNumberVisitor(lineNo, filename);
 	lnv.visit(ast);
 	vulnerableNode = lnv.ast_node;	#The node on the specified line
 	if (vulnerableNode == None):
@@ -428,7 +485,6 @@ def parseForCFG(filename, lineNo):
 	rootNode = CFGNode("Line " + str(lineNo), None);
 	lineFuncNode = CFGNode(lnv.lastFuncDefName, lnv.lastFuncDefNode);
 	rootNode.add_child(lineFuncNode);
-	lineFuncNode.add_parent(rootNode);
 
 	#Add those to the methodQueue
 	methodQueue.append( (lnv.lastFuncDefName, lineFuncNode) );
