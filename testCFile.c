@@ -48,7 +48,7 @@ int main(int argc, char* argv[]) {
 }
 
 void foo(char* b) {
-	foobar();
+	(b[0] == 'a') ? foobar() : bar(b);
 }
 
 void bar(char* f) {

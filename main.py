@@ -237,6 +237,21 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 							
 						conditionsAndLoops.append(newNode);
 
+					elif (isinstance(isDefinedIn, c_ast.TernaryOp)):
+						inIfRecurse = False;
+
+						ternaryString = resolveToString(isDefinedIn);
+
+						#If we already have a CFGNode for this ast_node use it, don't make a new one
+						newNode = None;
+						try:
+							newNode = astToCfg[isDefinedIn];
+						except KeyError:
+							newNode = CFGNode(ternaryString, isDefinedIn);
+							astToCfg[isDefinedIn] = newNode;
+							
+						conditionsAndLoops.append(newNode);
+
 					else:
 						inIfRecurse = False;
 
@@ -424,7 +439,7 @@ def resolveToString(node):
 	if (isinstance(node, c_ast.FuncCall)):
 		name = resolveToString(node.name);
 		args = resolveToString(node.args);
-		return (name + '(' + args + ')');
+		return (name + '(' + ( args if args else '' ) + ')');
 	#FuncDecl
 	#FuncDef
 	#Goto
