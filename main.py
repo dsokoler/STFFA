@@ -125,7 +125,6 @@ class FuncCallVisitor(c_ast.NodeVisitor):
 
 					#Deals with if/else if[ else if [ else if...]]/else
 					if (isinstance(isDefinedIn, c_ast.If)):
-						isDefinedIn.show();
 						#Get the BinaryOP and then the string representing it
 						conditionResult = None;
 
@@ -386,14 +385,18 @@ def resolveToString(node):
 
 		#If the child is a BinaryOP we need to recurse again
 		if (isinstance(node.left, c_ast.BinaryOp)):
-			string = ('(' + resolveToString(node.left) + " " + string);
+			string = (resolveToString(node.left) + " " + string);
 		else:
-			string = ('(' + resolveToString(node.left) +  " " + string);
+			string = (resolveToString(node.left) +  " " + string);
 
 		if (isinstance(node.right, c_ast.BinaryOp)):
-			string += (" " + resolveToString(node.right) + ')');
+			string += (" " + resolveToString(node.right));
 		else:
-			string += (" " + resolveToString(node.right) + ')');
+			string += (" " + resolveToString(node.right));
+
+		#Group if neccessary
+		if (node.op == "&&" or node.op == "||"):
+			string = ('(' + string + ')');
 
 		return string;
 	#Break
